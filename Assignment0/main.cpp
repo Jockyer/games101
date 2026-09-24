@@ -1,5 +1,5 @@
-#include<cmath>
-#include<Eigen/Core>
+﻿#include<cmath>
+#include <Eigen/Dense>
 #include<Eigen/Dense>
 #include<iostream>
 
@@ -43,6 +43,16 @@ int main(){
     // matrix scalar multiply i * 2.0
     // matrix multiply i * j
     // matrix multiply vector i * v
+
+
+    /*assignment 0*/
+    Eigen::Vector3f p1(2.0f, 1.0f, 1.0f);
+    Eigen::Matrix3f rp_1, rp_2;
+    double pi = acos(-1.0);
+    double ang = pi / 4.0;
+    rp_1 << cos(ang), -sin(ang), 0, sin(ang), cos(ang), 0, 0, 0, 1;
+    rp_2 << 1, 0, 1, 0, 1, 2, 0, 0, 1;
+    std::cout << rp_2 * rp_1 * p1 << std::endl;
 
     return 0;
 }
