@@ -5,3 +5,5 @@ build/
 *.exe
 *.obj
 *.pdb
+Plugins/
+reference/
