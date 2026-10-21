@@ -7,3 +7,5 @@ build/
 *.pdb
 Plugins/
 reference/
+*.ppm
+result*.png
