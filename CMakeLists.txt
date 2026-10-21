@@ -21,4 +21,6 @@ add_subdirectory(Assignment5)
 add_subdirectory(Assignment6)
 add_subdirectory(Assignment7)
 # add_subdirectory(Assignment8)   # 需要 Freetype，本阶段不做（作业8 在可弃清单里）
+add_subdirectory(MeshTools)
+
 
