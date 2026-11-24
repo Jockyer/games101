@@ -58,83 +58,96 @@ bool Scene::trace(
 }
 
 // Implementation of Path Tracing
-Vector3f Scene::castRay(const Ray& ray, int depth) const
+Vector3f Scene::castRay(const Ray &ray, int depth) const
 {
+    // ===== 1. 这条光线打到了什么 =====
+    //   未命中     → 返回黑色
+    //   命中光源   → 只有“相机直接看到光源”才返回它的 emission；
+    //                弹射之后打到光源的情况已经由 L_dir 计入，这里不能再算一次
+    //   命中表面   → 往下算 L_dir + L_indir
     Intersection inter = intersect(ray);
-
-    if (!inter.happened)
-    {
-        return Vector3f(0.0f, 0.0f, 0.0f);
+    if (!inter.happened) {
+        return Vector3f(0.f);
     }
-
-    // 如果光线直接打在光源上（且是直接从相机射出的光线）
-    if (inter.m->hasEmission())
-    {
-        // 间接光照打到光源的情况已在L_dir 中采样计算过，所以深度大于0 时不重复计算
-        // 如果是BSDF 等材质，这样写可能会漏掉一些路径。例如相机 -> 镜子 -> 光源
-        return depth == 0 ? inter.m->getEmission() : Vector3f(0.0f, 0.0f, 0.0f);
-    }
-
-    Vector3f L_dir(0.0f, 0.0f, 0.0f);
-    Vector3f L_indir(0.0f, 0.0f, 0.0f);
-
-    // 直射光采样 (L_dir)
-    Intersection light_pos;
-    float pdf_light = 0.0f;
-    sampleLight(light_pos, pdf_light);
-
-    Vector3f p = inter.coords;
-    Vector3f xx = light_pos.coords;
-    Vector3f ws = normalize(xx - p);
-
-    //Vector3f wo = normalize(-ray.direction);
-    Vector3f wo = normalize(ray.direction);
-
-    // 加上一个小偏移量避免自交引起的表面噪点 (Shadow acne)
-    Vector3f p_shifted = p + inter.normal * 0.0005f;
-    if (dotProduct(ray.direction, inter.normal) > 0)
-    {
-        p_shifted = p - inter.normal * 0.0005f;
-    }
-
-    float dist_to_light = (xx - p).norm();
-    Intersection test_inter = intersect(Ray(p_shifted, ws));
-
-    // 如果交点距离光源足够近，说明没有被其它物体遮挡
-    if (test_inter.happened && dist_to_light - test_inter.distance < 0.01f)
-    {
-        Vector3f f_r = inter.m->eval(wo, ws, inter.normal);
-        float cosn = std::max(0.0f, dotProduct(ws, inter.normal));
-        float cosnn = std::max(0.0f, dotProduct(-ws, light_pos.normal));
-
-        L_dir = light_pos.emit * f_r * cosn * cosnn / (dist_to_light * dist_to_light) / pdf_light;
-    }
-
-    // 间接光追踪 (L_indir)
-    if (get_random_float() <= RussianRoulette)
-    {
-        Vector3f wi = inter.m->sample(wo, inter.normal).normalized();
-        Ray indir_ray(p_shifted, wi);
-        Intersection ininter = intersect(indir_ray);
-
-        // 如果打到了物体，并且打到的不是光源（避免Double Counting）
-        if (ininter.happened && !ininter.m->hasEmission())
-        {
-            float pdf_indir = inter.m->pdf(wo, wi, inter.normal);
-
-            // 避免极端值导致的亮点Fireflies)
-            if (pdf_indir > 0.0001f) 
-            {
-                Vector3f f_r_indir = inter.m->eval(wo, wi, inter.normal);
-                float cos_indir = std::max(0.0f, dotProduct(wi, inter.normal));
-
-                // 递归调用 castRay 来得到弹射后路径对该点的辐射度
-                Vector3f q_radiance = castRay(indir_ray, depth + 1);
-
-                L_indir = q_radiance * f_r_indir * cos_indir / pdf_indir / RussianRoulette;
-            }
+    else if (inter.m->hasEmission()) {
+        // TODO: 这里该返回什么？用什么条件区分“相机直接看到”和“弹射后打到”？
+        if (depth == 0) {
+            return Vector3f(inter.m->getEmission());
+        }
+        else {
+            return Vector3f(0.f);
         }
     }
 
+    // ===== 2. 直接光 L_dir =====
+    //   输入量：p = inter.coords，N = inter.normal
+    //           xs / pdf_light ← 由 sampleLight(light_pos, pdf_light) 给出
+    //   遮挡判断：从 p 朝 xs 打一条阴影射线，最近命中距离 ≈ |xs - p| 才算没被挡
+    //   权重：f_r * cos(theta_p) * cos(theta_s) / (|xs - p|^2 * pdf_light)
+    //   坑：Material::eval / pdf 的第二个参数必须是入射方向，传反会静默返回 0
+    Vector3f p = inter.coords;
+    Vector3f n = inter.normal;
+
+    float pdf_light;
+    Intersection light_pos;
+    sampleLight(light_pos, pdf_light);
+
+    Vector3f ws = normalize(light_pos.coords - p);
+    float dist = (p - light_pos.coords).norm();
+
+    float eps= 1e-3f;
+    Vector3f OffsetDir = (dotProduct(n, ws) > 0) ? n : -n;
+    Vector3f ShadowOrigin = p + eps * OffsetDir;
+    Ray shadowRay(ShadowOrigin, ws);
+    
+    Intersection s = intersect(shadowRay);
+    Vector3f L_dir(0.f);
+
+    // 遮挡判断：s.distance 是阴影射线的最近命中距离
+    // 没遮挡时 s.distance ≈ dist（差一个 eps），Intersection 默认 distance = DBL_MAX
+    bool blocked = (dist - s.distance) > eps;
+
+    if (!blocked) {
+        float cos_p = std::max(0.f, dotProduct(n, ws));                   // 表面法线 · 指向光源
+        float cos_s = std::max
+            (dotProduct(light_pos.normal, -ws),0.f);    // 光源法线 · 指向表面
+
+        L_dir = light_pos.emit                               // L_e(x_s)
+            * inter.m->eval(ws, -ray.direction, n)         // f_r
+            * cos_p * cos_s                                // 两个余弦
+            / (dist * dist * pdf_light);                   // 面积→立体角的雅可比 × pdf
+    }
+    
+    // ===== 3. 间接光 L_indir =====
+    //   方向：Material::sample 采样得到，不是自己解算
+    //   权重：f_r * cos(theta_i) / pdf(wi) / P_RR
+    //   轮盘：以 P_RR 的概率继续，结果除以 P_RR；它不是深度计数器
+    //   递归命中光源时跳过，避免和 L_dir 重复计入
+    Vector3f L_indir(0.f);
+
+    if (get_random_float() < RussianRoulette) {
+        // 1. 采样方向：用材质，不自己解算
+        Vector3f wi = inter.m->sample(-ray.direction, n);
+
+        // 2. 这个方向的 pdf
+        float pdf_i = inter.m->pdf(wi, -ray.direction, n);
+
+        if (pdf_i > 1e-6f) {
+            // 3. 沿 wi 的半球偏移，避免自相交
+            Vector3f offsetDir2 = (dotProduct(n, wi) > 0) ? n : -n;
+
+            // 4. 递归
+            Vector3f Li = castRay(Ray(p + eps * offsetDir2, wi), depth + 1);
+
+            // 5. MC 权重
+            L_indir = inter.m->eval(wi, -ray.direction, n)   // f_r
+                * dotProduct(n, wi)                       // cos(theta_i)
+                * Li                                      // L_i
+                / pdf_i                                   // 1 / pdf
+                / RussianRoulette;                  // 1 / P_RR
+        }
+    }
+
+    // ===== 4. 返回 =====
     return L_dir + L_indir;
 }

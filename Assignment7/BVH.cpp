@@ -108,40 +108,35 @@ Intersection BVHAccel::Intersect(const Ray& ray) const
 Intersection BVHAccel::getIntersection(BVHBuildNode* node, const Ray& ray) const
 {
     // TODO Traverse the BVH to find intersection
+    if (node == nullptr) {
+        return Intersection();
+    }
 
-    if (node == nullptr)
+    if (!node->bounds.IntersectP(ray, ray.direction_inv, ray.dirIsNeg))
     {
         return Intersection();
     }
 
-    if (node->bounds.IntersectP(ray, ray.direction_inv, ray.dirIsNeg))
+    if (node->left == nullptr && node->right == nullptr)
     {
-        if (node->left == nullptr && node->right == nullptr)
-        {
-            return node->object->getIntersection(ray);
-        }
-
-        Intersection isect1 = getIntersection(node->left, ray);
-        Intersection isect2 = getIntersection(node->right, ray);
-
-        if (isect1.happened && isect2.happened)
-        {
-            return isect1.distance < isect2.distance ? isect1 : isect2;
-        }
-        else if (isect1.happened)
-        {
-            return isect1;
-        }
-        else
-        {
-            return isect2;
-        }
+        return node->object->getIntersection(ray);
     }
+
     else
     {
-        return Intersection();
+        Intersection isectL = getIntersection(node->left, ray);
+        Intersection isectR = getIntersection(node->right, ray);
+        if (isectL.happened && isectR.happened) {
+            return (isectL.distance < isectR.distance) ? isectL : isectR;
+        }
+        else {
+            return isectL.happened ? isectL : isectR;
+        }
     }
+
+    return Intersection();
 }
+
 
 void BVHAccel::getSample(BVHBuildNode* node, float p, Intersection &pos, float &pdf){
     if(node->left == nullptr || node->right == nullptr){
