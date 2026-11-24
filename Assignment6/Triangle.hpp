@@ -9,44 +9,32 @@
 #include <cassert>
 #include <array>
 
-bool rayTriangleIntersect(
-    const Vector3f& v0,
-    const Vector3f& v1,
-    const Vector3f& v2,
-    const Vector3f& orig,
-    const Vector3f& dir,
-    float& tnear,
-    float& u,
-    float& v)
+bool rayTriangleIntersect(const Vector3f& v0, const Vector3f& v1,
+                          const Vector3f& v2, const Vector3f& orig,
+                          const Vector3f& dir, float& tnear, float& u, float& v)
 {
-    const float EPSILON = 1e-8f;
-
     Vector3f edge1 = v1 - v0;
     Vector3f edge2 = v2 - v0;
-
     Vector3f pvec = crossProduct(dir, edge2);
     float det = dotProduct(edge1, pvec);
-
-    if (fabs(det) < EPSILON)
+    if (det == 0 || det < 0)
         return false;
 
-    float invDet = 1.0f / det;
-
     Vector3f tvec = orig - v0;
-
-    u = dotProduct(tvec, pvec) * invDet;
-    if (u < 0.0f || u > 1.0f)
+    u = dotProduct(tvec, pvec);
+    if (u < 0 || u > det)
         return false;
 
     Vector3f qvec = crossProduct(tvec, edge1);
-
-    v = dotProduct(dir, qvec) * invDet;
-    if (v < 0.0f || u + v > 1.0f)
+    v = dotProduct(dir, qvec);
+    if (v < 0 || u + v > det)
         return false;
+
+    float invDet = 1 / det;
 
     tnear = dotProduct(edge2, qvec) * invDet;
-    if (tnear < EPSILON)
-        return false;
+    u *= invDet;
+    v *= invDet;
 
     return true;
 }
@@ -244,19 +232,14 @@ inline Intersection Triangle::getIntersection(Ray ray)
     t_tmp = dotProduct(e2, qvec) * det_inv;
 
     // TODO find ray triangle intersection
+    if (t_tmp < 0)  return inter;
+    inter.happened = true;
+    inter.distance = t_tmp;
+    inter.obj = this;
+    inter.m = m;
 
-    float t;
-    float b1;
-    float b2;
-    if (rayTriangleIntersect(v0, v1, v2, ray.origin, ray.direction, t, b1, b2))
-    {
-        inter.happened = true;
-        inter.coords = (1 - b1 - b2) * v0 + b1 * v1 + b2 * v2;
-        inter.normal = normal;
-        inter.distance = t;
-        inter.obj = this;
-        inter.m = m;
-    }
+    inter.coords = ray.origin + ray.direction * t_tmp;
+    inter.normal = normal;
 
     return inter;
 }

@@ -88,28 +88,29 @@ class Bounds3
                            const std::array<int, 3>& dirisNeg) const;
 };
 
-inline bool Bounds3::IntersectP(const Ray& ray, const Vector3f& invDir, const std::array<int, 3>& dirIsNeg) const
+inline bool Bounds3::IntersectP(const Ray& ray, const Vector3f& invDir,
+                                const std::array<int, 3>& dirIsNeg) const
 {
     // invDir: ray direction(x,y,z), invDir=(1.0/x,1.0/y,1.0/z), use this because Multiply is faster that Division
     // dirIsNeg: ray direction(x,y,z), dirIsNeg=[int(x>0),int(y>0),int(z>0)], use this to simplify your logic
     // TODO test if ray bound intersects
+    float t0x = (pMin.x - ray.origin.x) * invDir.x;
+    float t0y = (pMin.y - ray.origin.y) * invDir.y;
+    float t0z = (pMin.z - ray.origin.z) * invDir.z;
+    float t1x = (pMax.x - ray.origin.x) * invDir.x;
+    float t1y = (pMax.y - ray.origin.y) * invDir.y;
+    float t1z = (pMax.z - ray.origin.z) * invDir.z;
+    float tmin_x = std::min(t0x, t1x), tmax_x = std::max(t0x, t1x);
+    float tmin_y = std::min(t0y, t1y), tmax_y = std::max(t0y, t1y);
+    float tmin_z = std::min(t0z, t1z), tmax_z = std::max(t0z, t1z);
 
-    // 时间 = 位移 / 速度
-    float tMin_x = (pMin.x - ray.origin.x) * invDir.x;
-    float tMax_x = (pMax.x - ray.origin.x) * invDir.x;
-    float tMin_y = (pMin.y - ray.origin.y) * invDir.y;
-    float tMax_y = (pMax.y - ray.origin.y) * invDir.y;
-    float tMin_z = (pMin.z - ray.origin.z) * invDir.z;
-    float tMax_z = (pMax.z - ray.origin.z) * invDir.z;
+    float t_enter = std::max(tmin_x, std::max(tmin_y, tmin_z));
+    float t_exit = std::min(tmax_x, std::max(tmax_y, tmax_z));
 
-    if (!dirIsNeg[0]) std::swap(tMin_x, tMax_x);
-    if (!dirIsNeg[1]) std::swap(tMin_y, tMax_y);
-    if (!dirIsNeg[2]) std::swap(tMin_z, tMax_z);
+    return t_enter <= t_exit && t_exit >= 0;
 
-    float tEnter = std::max(tMin_x, std::max(tMin_y, tMin_z));
-    float tExit = std::min(tMax_x, std::min(tMax_y, tMax_z));
 
-    return tEnter <= tExit && tExit >= 0;
+    return false;
 }
 
 inline Bounds3 Union(const Bounds3& b1, const Bounds3& b2)
